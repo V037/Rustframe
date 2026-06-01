@@ -1,0 +1,20 @@
+{
+  "windows": [
+    {
+      "id_token": 0,
+      "title": "Sesso",
+      "pos_x": 150.0,
+      "pos_y": 150.0,
+      "width": 280.0,
+      "height": 220.0,
+      "shortcuts": [
+        {
+          "name": "Sesso",
+          "exe_path": "C:\\Users\\Valentino\\Desktop\\ALVR Launcher.exe",
+          "icon_png_path": "_icon_cache/icon_0.png"
+        }
+      ]
+    }
+  ],
+  "next_id": 1
+}
