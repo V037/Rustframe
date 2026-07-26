@@ -14,6 +14,8 @@ use windows::Win32::UI::WindowsAndMessaging::{
     WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
 };
 
+mod ram_monitor;
+
 // ==========================================
 // 1. SERIALIZATION DATA STORAGE STRUCTS
 // ==========================================
@@ -182,7 +184,30 @@ impl eframe::App for DeskFrameApp {
 
                 ui.heading("Control Panel Dashboard");
                 ui.separator();
-                
+
+                // RAM Usage Meter
+                let ram = ram_monitor::RamUsage::read();
+                let usage_pct = ram.usage_percent();
+                let used_text = format!("Used: {} / {}", 
+                    ram_monitor::RamUsage::format_bytes(ram.used_kb),
+                    ram_monitor::RamUsage::format_bytes(ram.total_kb));
+                ui.label(egui::RichText::new(&used_text).color(self.text_color));
+
+                // Progress bar for RAM usage
+                let bar_width = egui::vec2(ui.available_width() - 32.0, 16.0);
+                let bar_response = ui.add(egui::ProgressBar::from_value(usage_pct / 100.0).size(bar_width));
+
+                // Color the progress bar based on usage level
+                if usage_pct > 90.0 {
+                    bar_response.fill(egui::Color32::RED);
+                } else if usage_pct > 75.0 {
+                    bar_response.fill(egui::Color32::ORANGE);
+                } else {
+                    bar_response.fill(egui::Color32::GREEN);
+                }
+
+                ui.add_space(4.0);
+
                 ui.label(egui::RichText::new("Shortcut Canvas Controller").color(self.text_color));
                 ui.add_space(8.0);
 
