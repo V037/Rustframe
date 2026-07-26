@@ -1,4 +1,4 @@
-use std::fs;
+use sysinfo::{ProcessExt, Pid, System, SystemExt};
 
 #[derive(Debug, Clone)]
 pub struct RamUsage {
@@ -8,24 +8,24 @@ pub struct RamUsage {
 }
 
 impl RamUsage {
-    /// Read RAM usage from /proc/meminfo (Linux) or return a default value.
+    /// Read RAM usage of the current process using `sysinfo`.
     pub fn read() -> Self {
-        if let Ok(content) = fs::read_to_string("/proc/meminfo") {
-            let total_kb = parse_meminfo_line(&content, "MemTotal");
-            let available_kb = parse_meminfo_line(&content, "MemAvailable");
+        let mut system = System::new_all();
+        system.refresh_memory();
 
-            RamUsage {
-                total_kb: total_kb.unwrap_or(0),
-                available_kb: available_kb.unwrap_or(0),
-                used_kb: total_kb.unwrap_or(0).saturating_sub(available_kb.unwrap_or(0)),
-            }
+        let total_kb = system.total_memory();
+        // Get memory used by this process (in KB)
+        let pid = Pid::from(std::process::id() as usize);
+        let used_kb = if let Some(process) = system.process(pid) {
+            process.memory() as u64
         } else {
-            // Fallback for non-Linux environments
-            RamUsage {
-                total_kb: 0,
-                available_kb: 0,
-                used_kb: 0,
-            }
+            0
+        };
+
+        RamUsage {
+            total_kb,
+            available_kb: 0,
+            used_kb,
         }
     }
 
@@ -38,7 +38,7 @@ impl RamUsage {
         percent.min(100.0)
     }
 
-    /// Format bytes to human-readable string (e.g., "1.5 GB")
+    /// Format bytes to human‑readable string (e.g., "1.5 GB")
     pub fn format_bytes(bytes: u64) -> String {
         const KB: u64 = 1024;
         const MB: u64 = 1024 * 1024;
@@ -55,24 +55,10 @@ impl RamUsage {
         }
     }
 
-    /// Format percentage to a human-readable string (e.g., "75.3%")
+    /// Format percentage to a human‑readable string (e.g., "75.3%")
     pub fn format_percent(percent: f32) -> String {
         format!("{:.1}%", percent)
     }
-}
-
-fn parse_meminfo_line(content: &str, key: &str) -> Option<u64> {
-    for line in content.lines() {
-        let trimmed = line.trim();
-        if trimmed.starts_with(key) {
-            // Format: "MemTotal:       15927680 kB"
-            let parts: Vec<&str> = trimmed.split_whitespace().collect();
-            if parts.len() >= 3 {
-                return parts[2].parse::<u64>().ok();
-            }
-        }
-    }
-    None
 }
 
 #[cfg(test)]
