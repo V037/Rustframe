@@ -13,6 +13,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     FindWindowW, SetWindowPos, HWND_BOTTOM, SWP_NOMOVE, SWP_NOSIZE, 
     WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
 };
+use sysinfo::{System, SystemExt};
 
 // ==========================================
 // 1. SERIALIZATION DATA STORAGE STRUCTS
@@ -347,6 +348,19 @@ impl eframe::App for DeskFrameApp {
                         ui.ctx().send_viewport_cmd(egui::ViewportCommand::BeginResize(egui::ResizeDirection::SouthEast));
                     }
                 });
+
+                // Add RAM meter
+                let mut sys = System::new_all();
+                sys.refresh_memory();
+                let total_memory = sys.total_memory();
+                let used_memory = sys.used_memory();
+
+                ui.add_space(10.0);
+                ui.separator();
+                ui.add_space(4.0);
+
+                ui.heading("System Information");
+                ui.label(format!("RAM Usage: {:.2} GB / {:.2} GB", used_memory as f64 / 1_073_741_824.0, total_memory as f64 / 1_073_741_824.0));
             });
     }
 }
