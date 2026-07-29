@@ -2,8 +2,6 @@
 use eframe::egui::{Color32, Painter, Pos2, Vec2};
 use rand::{Rng, thread_rng};
 
-// Removed unused imports: std::f32::consts::PI, rand::rngs::SmallRng
-
 /// A simple 2‑D particle used for a constellation background.
 #[derive(Debug, Clone)]
 pub struct Particle {
@@ -19,7 +17,6 @@ impl Particle {
             rng.gen_range(0.0..bounds.0),
             rng.gen_range(0.0..bounds.1),
         );
-        // Random direction
         let angle: f32 = rng.gen_range(0.0..TAU);
         let speed = rng.gen_range(speed_range.0..speed_range.1);
         let vel = Vec2::new(angle.cos(), angle.sin()) * speed;
@@ -30,9 +27,7 @@ impl Particle {
 /// A mesh that owns a list of particles and draws them.
 pub struct ParticleMesh {
     pub particles: Vec<Particle>,
-    // Distance threshold to draw lines between two particles.
     line_dist: f32,
-    // How fast particles should move (pixels per second).
     speed_range: (f32, f32),
 }
 
@@ -59,7 +54,7 @@ impl ParticleMesh {
     }
 
     /// Update particle positions. `delta` is the time elapsed since last call.
-    pub fn update(&mut self, delta: f32, bounds: (f32,f32)) {
+    pub fn update(&mut self, delta: f32, bounds: (f32, f32)) {
         for p in &mut self.particles {
             p.pos += p.vel * delta;
             // Bounce off bounds
@@ -72,9 +67,20 @@ impl ParticleMesh {
         }
     }
 
+    /// Clamp particles inside current bounds on resize.
+    pub fn resize(&mut self, bounds: (f32, f32)) {
+        for p in &mut self.particles {
+            if p.pos.x > bounds.0 {
+                p.pos.x = bounds.0;
+            }
+            if p.pos.y > bounds.1 {
+                p.pos.y = bounds.1;
+            }
+        }
+    }
+
     /// Draw the mesh using egui's painter.
     pub fn draw(&self, painter: &Painter) {
-        // First draw lines between close particles
         let len = self.particles.len();
         for i in 0..len {
             for j in (i + 1)..len {
@@ -85,13 +91,15 @@ impl ParticleMesh {
                     let t = 1.0 - dist_sq.sqrt() / self.line_dist;
                     painter.add(egui::Shape::line_segment(
                         [a.pos, b.pos],
-                        egui::Stroke { width: 0.5, color: Color32::from_rgba_unmultiplied(200, 200, 255, (t * 120.0) as u8) },
+                        egui::Stroke {
+                            width: 0.5,
+                            color: Color32::from_rgba_unmultiplied(200, 200, 255, (t * 120.0) as u8),
+                        },
                     ));
                 }
             }
         }
 
-        // Then draw particles themselves
         for p in &self.particles {
             painter.circle_filled(p.pos, 2.0, Color32::WHITE);
         }

@@ -2,9 +2,9 @@ use eframe::egui;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::{Read, Write};
-use std::time::Duration;
-use std::sync::{Arc, Mutex};
 use std::path::Path;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 mod particle_mesh;
 use crate::particle_mesh::ParticleMesh;
 use windows::Win32::UI::WindowsAndMessaging::{
@@ -12,11 +12,11 @@ use windows::Win32::UI::WindowsAndMessaging::{
     WS_EX_TOOLWINDOW,
 };
 use crate::tray::TrayHandler;
-use tray_icon::TrayIcon;
 use tray_icon::menu::MenuEvent;
+use tray_icon::TrayIcon;
 
-mod tray;
 mod ram_monitor;
+mod tray;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 struct ShortcutConfig {
@@ -88,30 +88,33 @@ fn main() -> eframe::Result {
     eframe::run_native(
         window_title,
         options,
-        Box::new(move |cc| {
+        Box::new(move |_cc| {
             apply_win32_layers(window_title);
 
-            let ctx_for_thread = cc.egui_ctx.clone();
-        // Background thread updates UI every 3 seconds
-        std::thread::spawn(move || loop {
-            std::thread::sleep(Duration::from_secs(3));
-            let _ = ctx_for_thread.request_repaint();
-        });
+            let ram_state = Arc::new(Mutex::new(ram_monitor::RamUsage::read()));
+            let ram_for_thread = ram_state.clone();
+
+            // Background thread updates RAM stats every 3 seconds
+            std::thread::spawn(move || loop {
+                std::thread::sleep(Duration::from_secs(3));
+                let new_ram = ram_monitor::RamUsage::read();
+                if let Ok(mut ram) = ram_for_thread.lock() {
+                    *ram = new_ram;
+                }
+            });
 
             let tray_handler = TrayHandler::new(Path::new("icon.png"));
-
             let saved_config = AppConfig::load();
 
             let app = DeskFrameApp {
                 _tray_icon: tray_handler.icon,
                 show_id: tray_handler.show_id.clone(),
                 exit_id: tray_handler.exit_id.clone(),
-                // Use a neutral color for status text
                 text_color: egui::Color32::WHITE,
                 next_window_id: saved_config.next_id,
                 persistent_config: Arc::new(Mutex::new(saved_config)),
-                ram_usage: ram_monitor::RamUsage::read(),
-    particle_mesh: ParticleMesh::new(200, (800.0, 600.0)),
+                ram_usage: ram_state,
+                particle_mesh: ParticleMesh::new(100, (320.0, 480.0)),
                 exe_input_buffer: String::new(),
                 name_input_buffer: String::new(),
             };
@@ -128,7 +131,7 @@ struct DeskFrameApp {
     text_color: egui::Color32,
     next_window_id: u32,
     persistent_config: Arc<Mutex<AppConfig>>,
-    ram_usage: ram_monitor::RamUsage,
+    ram_usage: Arc<Mutex<ram_monitor::RamUsage>>,
     exe_input_buffer: String,
     name_input_buffer: String,
     particle_mesh: ParticleMesh,
@@ -140,15 +143,6 @@ impl eframe::App for DeskFrameApp {
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        // Use cached RAM usage
-        let ram = &self.ram_usage;
-        let used_text = format!(
-            "Used: {} / {}",
-            ram_monitor::RamUsage::format_bytes(ram.used_kb),
-            ram_monitor::RamUsage::format_bytes(ram.total_kb)
-        );
-        ui.label(egui::RichText::new(&used_text).color(self.text_color));
-
         if let Ok(event) = MenuEvent::receiver().try_recv() {
             if event.id == self.exit_id {
                 ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
@@ -167,27 +161,35 @@ impl eframe::App for DeskFrameApp {
         egui::CentralPanel::default()
             .frame(custom_frame)
             .show_inside(ui, |ui| {
-    let dt = ui.ctx().input(|x| x.unstable_dt);
-    let rect = ui.content_rect();
-    self.particle_mesh.update(dt, (rect.width(), rect.height()));
-    self.particle_mesh.draw(ui.painter());
+                let dt = ui.ctx().input(|x| x.unstable_dt);
+                let size = ui.ctx().content_rect().size();
+                
+                self.particle_mesh.resize((size.x, size.y));
+                self.particle_mesh.update(dt, (size.x, size.y));
+                self.particle_mesh.draw(ui.painter());
 
-    let bg_drag = ui.interact(
-        ui.max_rect(),
-        egui::Id::new("widget_drag_layer"),
-        egui::Sense::drag(),
-    );
+                // Keep particles moving smoothly continuously
+                ui.ctx().request_repaint();
+
+                let bg_drag = ui.interact(
+                    ui.max_rect(),
+                    egui::Id::new("widget_drag_layer"),
+                    egui::Sense::drag(),
+                );
                 if bg_drag.dragged() {
                     ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
                 }
 
-                ui.heading("Control Panel Dashboard");
+                ui.heading("RustyFrame Dashboard");
                 ui.separator();
 
-                // Display RAM usage in the status bar instead of a progress bar
-                let ram_status = format!("RAM: {} / {}", 
-                    ram_monitor::RamUsage::format_bytes(ram.used_kb),
-                    ram_monitor::RamUsage::format_bytes(ram.total_kb));
+                // Display cached RAM usage safely
+                let ram_text = if let Ok(ram) = self.ram_usage.lock() {
+                    ram_monitor::RamUsage::format_bytes(ram.used_kb)
+                } else {
+                    "N/A".to_string()
+                };
+                let ram_status = format!("RAM USAGE: {}", ram_text);
                 ui.label(egui::RichText::new(&ram_status).color(self.text_color));
 
                 ui.add_space(4.0);
@@ -330,7 +332,7 @@ impl eframe::App for DeskFrameApp {
                                                         .find(|w| w.id_token == id)
                                                     {
                                                         tgt.width = ui.ctx().content_rect().width();
-tgt.height = ui.ctx().content_rect().height();
+                                                        tgt.height = ui.ctx().content_rect().height();
                                                         cfg.save();
                                                     }
                                                 }
