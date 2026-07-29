@@ -1,3 +1,1 @@
-vibe coded with gemini
-
-should be equivalent of deskframe but entirely written in rust
+the equivalent of another github repo called deskframe, but this is written in rust
