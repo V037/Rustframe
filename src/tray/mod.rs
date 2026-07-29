@@ -10,10 +10,10 @@ pub struct TrayHandler {
 impl TrayHandler {
     pub fn new(icon_path: &std::path::Path) -> Self {
         let icon = load_icon(icon_path);
-        let mut menu = Menu::new();
+        let menu = Menu::new();
         let show_item = MenuItem::new("Show Window", true, None);
         let exit_item = MenuItem::new("Exit", true, None);
-        menu.append_items(&[&show_item, &exit_item]);
+        let _ = menu.append_items(&[&show_item, &exit_item]);
 
         let tray_icon = TrayIconBuilder::new()
             .with_menu(Box::new(menu))

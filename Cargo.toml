@@ -11,4 +11,8 @@ win-icon-extractor = { version = "0.1", features = ["png"] }
 tray-icon = "0.24.1"
 image = "0.25.10"
 windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
+
+egui = "^0.34"
+
+rand = { version = "0.8", features = ["small_rng"] }
 sysinfo = { version = "^0.29" }

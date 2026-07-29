@@ -2,17 +2,20 @@ use eframe::egui;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::{Read, Write};
-use std::path::Path;
-use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tray_icon::{menu::MenuEvent, TrayIcon};
-mod tray;
-use tray::TrayHandler;
+use std::sync::{Arc, Mutex};
+use std::path::Path;
+mod particle_mesh;
+use crate::particle_mesh::ParticleMesh;
 use windows::Win32::UI::WindowsAndMessaging::{
     FindWindowW, SetWindowPos, HWND_BOTTOM, SWP_NOMOVE, SWP_NOSIZE, WS_EX_NOACTIVATE,
     WS_EX_TOOLWINDOW,
 };
+use crate::tray::TrayHandler;
+use tray_icon::TrayIcon;
+use tray_icon::menu::MenuEvent;
 
+mod tray;
 mod ram_monitor;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -88,12 +91,12 @@ fn main() -> eframe::Result {
         Box::new(move |cc| {
             apply_win32_layers(window_title);
 
-            let ctx = cc.egui_ctx.clone();
-            // Background thread updates RAM usage every 3 seconds
-            std::thread::spawn(move || loop {
-                std::thread::sleep(Duration::from_secs(3));
-                ctx.request_repaint();
-            });
+            let ctx_for_thread = cc.egui_ctx.clone();
+        // Background thread updates UI every 3 seconds
+        std::thread::spawn(move || loop {
+            std::thread::sleep(Duration::from_secs(3));
+            let _ = ctx_for_thread.request_repaint();
+        });
 
             let tray_handler = TrayHandler::new(Path::new("icon.png"));
 
@@ -103,10 +106,12 @@ fn main() -> eframe::Result {
                 _tray_icon: tray_handler.icon,
                 show_id: tray_handler.show_id.clone(),
                 exit_id: tray_handler.exit_id.clone(),
-                text_color: egui::Color32::from_rgb(0, 255, 150),
+                // Use a neutral color for status text
+                text_color: egui::Color32::WHITE,
                 next_window_id: saved_config.next_id,
                 persistent_config: Arc::new(Mutex::new(saved_config)),
                 ram_usage: ram_monitor::RamUsage::read(),
+    particle_mesh: ParticleMesh::new(200, (800.0, 600.0)),
                 exe_input_buffer: String::new(),
                 name_input_buffer: String::new(),
             };
@@ -126,6 +131,7 @@ struct DeskFrameApp {
     ram_usage: ram_monitor::RamUsage,
     exe_input_buffer: String,
     name_input_buffer: String,
+    particle_mesh: ParticleMesh,
 }
 
 impl eframe::App for DeskFrameApp {
@@ -136,7 +142,6 @@ impl eframe::App for DeskFrameApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         // Use cached RAM usage
         let ram = &self.ram_usage;
-        let usage_pct = ram.usage_percent();
         let used_text = format!(
             "Used: {} / {}",
             ram_monitor::RamUsage::format_bytes(ram.used_kb),
@@ -162,11 +167,16 @@ impl eframe::App for DeskFrameApp {
         egui::CentralPanel::default()
             .frame(custom_frame)
             .show_inside(ui, |ui| {
-                let bg_drag = ui.interact(
-                    ui.max_rect(),
-                    egui::Id::new("widget_drag_layer"),
-                    egui::Sense::drag(),
-                );
+    let dt = ui.ctx().input(|x| x.unstable_dt);
+    let rect = ui.content_rect();
+    self.particle_mesh.update(dt, (rect.width(), rect.height()));
+    self.particle_mesh.draw(ui.painter());
+
+    let bg_drag = ui.interact(
+        ui.max_rect(),
+        egui::Id::new("widget_drag_layer"),
+        egui::Sense::drag(),
+    );
                 if bg_drag.dragged() {
                     ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
                 }
@@ -174,15 +184,11 @@ impl eframe::App for DeskFrameApp {
                 ui.heading("Control Panel Dashboard");
                 ui.separator();
 
-                // Progress bar for RAM usage
-                let bar_color = if usage_pct > 90.0 {
-                    egui::Color32::RED
-                } else if usage_pct > 75.0 {
-                    egui::Color32::ORANGE
-                } else {
-                    egui::Color32::GREEN
-                };
-                ui.add(egui::ProgressBar::new(usage_pct / 100.0).fill(bar_color));
+                // Display RAM usage in the status bar instead of a progress bar
+                let ram_status = format!("RAM: {} / {}", 
+                    ram_monitor::RamUsage::format_bytes(ram.used_kb),
+                    ram_monitor::RamUsage::format_bytes(ram.total_kb));
+                ui.label(egui::RichText::new(&ram_status).color(self.text_color));
 
                 ui.add_space(4.0);
 
@@ -281,7 +287,7 @@ impl eframe::App for DeskFrameApp {
                                 .corner_radius(10.0)
                                 .inner_margin(14.0);
                             let db_clone = db_handle.clone();
-                            egui::CentralPanel::default().frame(frame).show(ctx, |ui| {
+                            egui::CentralPanel::default().frame(frame).show_inside(ctx, |ui| {
                                 let drag = ui.interact(
                                     ui.max_rect(),
                                     egui::Id::new(format!("drag_{}", id)),
@@ -323,9 +329,8 @@ impl eframe::App for DeskFrameApp {
                                                         .iter_mut()
                                                         .find(|w| w.id_token == id)
                                                     {
-                                                        tgt.width = ui.ctx().screen_rect().width();
-                                                        tgt.height =
-                                                            ui.ctx().screen_rect().height();
+                                                        tgt.width = ui.ctx().content_rect().width();
+tgt.height = ui.ctx().content_rect().height();
                                                         cfg.save();
                                                     }
                                                 }
@@ -369,7 +374,7 @@ fn apply_win32_layers(title: &str) {
             let style = GetWindowLongW(hwnd, GWL_EXSTYLE);
             let new_style = style | WS_EX_NOACTIVATE.0 as i32 | WS_EX_TOOLWINDOW.0 as i32;
             SetWindowLongW(hwnd, GWL_EXSTYLE, new_style);
-            SetWindowPos(hwnd, Some(HWND_BOTTOM), 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+            let _ = SetWindowPos(hwnd, Some(HWND_BOTTOM), 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
         }
     }
 }
