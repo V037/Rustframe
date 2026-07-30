@@ -1,4 +1,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 use eframe::egui;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
@@ -9,8 +10,7 @@ use std::time::Duration;
 mod particle_mesh;
 use crate::particle_mesh::ParticleMesh;
 use windows::Win32::UI::WindowsAndMessaging::{
-    FindWindowW, SetWindowPos, HWND_BOTTOM, SWP_NOMOVE, SWP_NOSIZE, WS_EX_NOACTIVATE,
-    WS_EX_TOOLWINDOW,
+    FindWindowW, SetWindowLongW, GetWindowLongW, GWL_EXSTYLE, WS_EX_TOOLWINDOW,
 };
 use crate::tray::TrayHandler;
 use tray_icon::menu::MenuEvent;
@@ -19,9 +19,7 @@ use tray_icon::TrayIcon;
 mod ram_monitor;
 mod tray;
 
-// 1. EMBED ICON BYTES AT COMPILE TIME
-// Assumes icon.png is in your project root next to Cargo.toml.
-// If icon.png is inside src/, change "../icon.png" to "icon.png".
+// Embed icon bytes at compile-time
 static ICON_BYTES: &[u8] = include_bytes!("../icon.png");
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -109,7 +107,6 @@ fn main() -> eframe::Result {
                 }
             });
 
-            // 2. PASS THE EMBEDDED BYTES TO TRAY HANDLER
             let tray_handler = TrayHandler::new(ICON_BYTES);
             let saved_config = AppConfig::load();
 
@@ -187,11 +184,7 @@ impl eframe::App for DeskFrameApp {
                     ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
                 }
 
-                ui.heading(
-                egui::RichText::new("RustyFrame Dashboard")
-                    .color(egui::Color32::from_rgb(255, 100, 100)) // Red tint
-                    .strong() // Extra bold
-                    );
+                ui.heading("RustyFrame Dashboard");
                 ui.separator();
 
                 // Display cached RAM usage safely
@@ -381,13 +374,10 @@ fn apply_win32_layers(title: &str) {
         let mut wide: Vec<u16> = title.encode_utf16().collect();
         wide.push(0);
         if let Some(hwnd) = FindWindowW(None, windows::core::PCWSTR(wide.as_ptr())).ok() {
-            use windows::Win32::UI::WindowsAndMessaging::{
-                GetWindowLongW, SetWindowLongW, GWL_EXSTYLE,
-            };
             let style = GetWindowLongW(hwnd, GWL_EXSTYLE);
-            let new_style = style | WS_EX_NOACTIVATE.0 as i32 | WS_EX_TOOLWINDOW.0 as i32;
+            // Hide from alt-tab taskbar without forcing focus/topmost Z-order
+            let new_style = style | WS_EX_TOOLWINDOW.0 as i32;
             SetWindowLongW(hwnd, GWL_EXSTYLE, new_style);
-            let _ = SetWindowPos(hwnd, Some(HWND_BOTTOM), 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
         }
     }
 }
