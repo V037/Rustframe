@@ -1,3 +1,4 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 use eframe::egui;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
@@ -17,6 +18,11 @@ use tray_icon::TrayIcon;
 
 mod ram_monitor;
 mod tray;
+
+// 1. EMBED ICON BYTES AT COMPILE TIME
+// Assumes icon.png is in your project root next to Cargo.toml.
+// If icon.png is inside src/, change "../icon.png" to "icon.png".
+static ICON_BYTES: &[u8] = include_bytes!("../icon.png");
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 struct ShortcutConfig {
@@ -103,7 +109,8 @@ fn main() -> eframe::Result {
                 }
             });
 
-            let tray_handler = TrayHandler::new(Path::new("icon.png"));
+            // 2. PASS THE EMBEDDED BYTES TO TRAY HANDLER
+            let tray_handler = TrayHandler::new(ICON_BYTES);
             let saved_config = AppConfig::load();
 
             let app = DeskFrameApp {
@@ -114,7 +121,7 @@ fn main() -> eframe::Result {
                 next_window_id: saved_config.next_id,
                 persistent_config: Arc::new(Mutex::new(saved_config)),
                 ram_usage: ram_state,
-                particle_mesh: ParticleMesh::new(100, (320.0, 480.0)),
+                particle_mesh: ParticleMesh::new(50, (320.0, 480.0)),
                 exe_input_buffer: String::new(),
                 name_input_buffer: String::new(),
             };
@@ -163,7 +170,7 @@ impl eframe::App for DeskFrameApp {
             .show_inside(ui, |ui| {
                 let dt = ui.ctx().input(|x| x.unstable_dt);
                 let size = ui.ctx().content_rect().size();
-                
+
                 self.particle_mesh.resize((size.x, size.y));
                 self.particle_mesh.update(dt, (size.x, size.y));
                 self.particle_mesh.draw(ui.painter());
@@ -180,7 +187,11 @@ impl eframe::App for DeskFrameApp {
                     ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
                 }
 
-                ui.heading("RustyFrame Dashboard");
+                ui.heading(
+                egui::RichText::new("RustyFrame Dashboard")
+                    .color(egui::Color32::from_rgb(255, 100, 100)) // Red tint
+                    .strong() // Extra bold
+                    );
                 ui.separator();
 
                 // Display cached RAM usage safely

@@ -1,5 +1,8 @@
-use tray_icon::{menu::{Menu, MenuItem}, Icon, TrayIcon, TrayIconBuilder};
 use image;
+use tray_icon::{
+    menu::{Menu, MenuItem},
+    Icon, TrayIcon, TrayIconBuilder,
+};
 
 pub struct TrayHandler {
     pub icon: TrayIcon,
@@ -8,8 +11,8 @@ pub struct TrayHandler {
 }
 
 impl TrayHandler {
-    pub fn new(icon_path: &std::path::Path) -> Self {
-        let icon = load_icon(icon_path);
+    pub fn new(icon_bytes: &[u8]) -> Self {
+        let icon = load_icon_from_memory(icon_bytes);
         let menu = Menu::new();
         let show_item = MenuItem::new("Show Window", true, None);
         let exit_item = MenuItem::new("Exit", true, None);
@@ -30,9 +33,11 @@ impl TrayHandler {
     }
 }
 
-fn load_icon(path: &std::path::Path) -> Icon {
+fn load_icon_from_memory(bytes: &[u8]) -> Icon {
     let (rgba, w, h) = {
-        let img = image::open(path).expect("Failed to open icon.png").into_rgba8();
+        let img = image::load_from_memory(bytes)
+            .expect("Failed to decode embedded icon")
+            .into_rgba8();
         let (w, h) = img.dimensions();
         (img.into_raw(), w, h)
     };
